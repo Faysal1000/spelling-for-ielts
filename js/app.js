@@ -383,8 +383,13 @@
       return;
     }
 
-    // Wrong letter: count a mistake, show it in red for a moment, then remove it
-    const wrongChar = [...typed].find((c, k) => !candidates.some(f => isPrefix(typed.slice(0, k + 1), f))) || "";
+    // Wrong letter: count a mistake, show it in red for a moment, then remove it.
+    // Several letters can arrive at once (paste, a phone's suggestion bar), so keep the
+    // correct letters in front of the wrong one.
+    const chars = [...typed];
+    const bad = chars.findIndex((c, k) => !candidates.some(f => isPrefix(chars.slice(0, k + 1).join(""), f)));
+    const wrongChar = bad >= 0 ? chars[bad] : "";
+    if (bad > live.valid.length) live.valid = chars.slice(0, bad).join("");
     live.mistakes += 1;
     const card = input.closest(".answer-card");
     card.classList.remove("shake");
@@ -610,6 +615,17 @@
     saveProgress();
     refresh();
   });
+
+  /* ---------- Privacy notice (shown once; nothing to consent to, since nothing is collected) ---------- */
+  const KEY_NOTICE = "isp.notice.v1";
+  if (!storage.get(KEY_NOTICE, null)) {
+    const notice = $("#notice");
+    notice.hidden = false;
+    $("#noticeOk").addEventListener("click", () => {
+      notice.hidden = true;
+      storage.set(KEY_NOTICE, { seen: 1 });
+    });
+  }
 
   /* ---------- Start ---------- */
   if (!WORDS.length) {

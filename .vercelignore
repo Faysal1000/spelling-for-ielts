@@ -1,5 +1,8 @@
-# Only the static site is deployed: index.html, css/, js/, data/, favicon.svg
+# Only the static site is deployed: index.html, privacy.html, 404.html, favicon.svg, css/, js/, data/
+# (vercel.json is read by Vercel as configuration)
 .venv
 .claude
 tools
 README.md
+.gitignore
+.vercelignore

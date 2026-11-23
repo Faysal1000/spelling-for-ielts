@@ -1,14 +1,23 @@
 # Python build environment (only needed to regenerate data/words.js)
 .venv/
 __pycache__/
+*.pyc
 tools/.cache.json
-tools/build.log
+*.log
+
+# Secrets: this site needs none, so never commit any
+.env
+.env.*
 
 # OS / editor
 .DS_Store
+Thumbs.db
 .vscode/
-.vercel
+.idea/
+*.swp
 
-# Local Claude Code tooling; the project's review agent is shared
-.claude/*
-!.claude/agents/
+# Vercel CLI
+.vercel/
+
+# Local Claude Code tooling (agents, skills, launch settings): never committed
+.claude/

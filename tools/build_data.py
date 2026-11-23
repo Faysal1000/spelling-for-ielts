@@ -3,7 +3,9 @@
 Definitions, examples and IPA come from the Free Dictionary API (Wiktionary), with WordNet
 (via nltk) for meaning ranking and extra synonyms/antonyms. Synonyms/antonyms also come from
 the Datamuse API, word frequency from wordfreq, and CEFR levels from the CEFR-J/Octanove
-profiles in tools/cefr/. Each word also gets a usefulness rank for the Top N lists.
+profiles in tools/cefr/. Hand-checked fixes in tools/curated.json win over all of these.
+Each word also gets a usefulness rank for the Top N lists, from the official IELTS sources in
+tools/ielts/ (Academic Word List, IDP Listening vocabulary).
 API responses are cached in tools/.cache.json; --offline rebuilds from the cache only.
 
 Run:  NLTK_DATA=.venv/nltk_data .venv/bin/python tools/build_data.py [--offline]
@@ -25,6 +27,7 @@ from wordfreq import zipf_frequency
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIST = os.path.join(ROOT, "tools", "wordlist.txt")
+CURATED = os.path.join(ROOT, "tools", "curated.json")
 CACHE = os.path.join(ROOT, "tools", ".cache.json")
 OUT = os.path.join(ROOT, "data", "words.js")
 
@@ -106,46 +109,154 @@ def phrase_zipf(text):
     return zipf_frequency(" ".join(parts), "en") - min(1.8, 1.0 * (len(parts) - 1))
 
 
-# ---- ranking: "Top 300 / 500 / ..." = most useful words for IELTS spelling ----
-# Every Top list mixes CEFR levels in fixed shares. IELTS maps band 5.5-6.5 to B2, 7-8 to C1 and
-# 8.5+ to C2 (ielts.org), so B2 and C1 get the largest shares. Band 7+ needs "less common lexical
-# items", so C1/C2 are always included. Listening needs the high-frequency words plus the Academic
-# Word List, so B1 keeps a solid share. A1/A2 words are mostly easy to spell, so they get little.
-LEVEL_SHARE = {"A1": 0.05, "A2": 0.10, "B1": 0.20, "B2": 0.275, "C1": 0.25, "C2": 0.125}
+# ---- ranking: "Top 100 / 300 / 500 / ..." = the most useful words for IELTS spelling ----
+# Every Top list is filled from the official IELTS sources in fixed shares, so even Top 100 covers
+# all of them, and each source's most important words come first:
+#   academic    Academic Word List (Coxhead), the core vocabulary of Reading and Writing
+#   listening   IDP's common IELTS Listening vocabulary (IDP co-owns IELTS). A misspelled answer
+#               scores zero in Listening, so spelling these matters most
+#   writing     Writing Task 1 (charts, trends) and Task 2 (argument, linking) language
+#   misspelled  words that IELTS candidates commonly misspell
+#   topic       vocabulary for the common IELTS topics (environment, health, work, ...)
+# A word belongs to the first of these that lists it, in the order: listening, misspelled,
+# academic, writing, topic.
+SOURCE_SHARE = {"academic": 0.33, "listening": 0.30, "misspelled": 0.15, "writing": 0.12, "topic": 0.10}
 
-# Within a level: frequency, nudged up for IELTS topics, Writing vocabulary and common misspellings.
+# The classic spelling traps found on practically every "commonly misspelled words" list; they
+# come first among the misspelled words (+1.0)
+CLASSIC_TRAPS = {
+    "accommodation", "necessary", "separate", "definitely", "embarrass", "occurrence", "receive",
+    "recommend", "beginning", "committee", "rhythm", "conscious", "government", "environment",
+    "until", "tomorrow", "address", "believe", "achieve", "privilege", "possession", "occasionally",
+    "foreign", "weird", "calendar", "february", "wednesday", "independent", "existence",
+    "successful", "immediately", "parliament", "restaurant", "acquaintance", "maintenance",
+}
+
+# Within a source, a word's usefulness is the sum of:
+#   frequency      Zipf frequency in general English (wordfreq)
+#   listening      on IDP's list (+1.0), and +0.5 more if IDP says test takers often misspell it
+#   academic       Academic Word List sublist: +3.4 for sublist 1 (most frequent) down to +0.25 for 10
+#   topic          IELTS topic and Writing vocabulary, or the commonly misspelled list
+#   classic trap   +1.0 for the words in CLASSIC_TRAPS
+#   difficulty     how hard the word is to spell (double letters, silent letters, tricky endings,
+#                  length), so easy-to-spell words like "merit" don't crowd out "accommodation"
+#   level          CEFR: IELTS bands 5.5-8 match B2-C1, and A1/A2 words are rarely misspelled, so
+#                  B1-C1 come first (not applied to words on a misspelled list, which stay high)
+LEVEL_ADJUST = {"A1": -1.5, "A2": -0.8, "B1": 0.0, "B2": 0.3, "C1": 0.3, "C2": -0.2}
 TOPIC_BONUS = {
-    "Commonly Misspelled Words": 1.5,  # this is a spelling site: classic traps come first
+    "Commonly Misspelled Words": 1.0,
     "Writing Task 1: Charts & Trends": 0.5,
     "Writing Task 2: Argument & Linking": 0.5,
-    "Academic Core": 0.4,  # the Academic Word List
     "Common Verbs & Adjectives for IELTS": 0.2,
+    "Academic Core": 0.0,  # scored by AWL sublist instead
     "Advanced Academic Words": 0.0,
 }
-OTHER_TOPIC_BONUS = 0.3  # IELTS topic vocabulary (Environment, Education, ...)
+OTHER_TOPIC_BONUS = 0.3  # IELTS topic vocabulary (Environment, Education, IELTS Listening, ...)
+LISTENING_BONUS, LISTENING_MISSPELLED_BONUS = 1.0, 0.5
+DIFFICULTY_WEIGHT = 0.8
+
+IELTS_DIR = os.path.join(ROOT, "tools", "ielts")
+
+
+def _read_lists(name):
+    """Lines "<key>: a, b, c" in tools/ielts/<name> -> {key: set of lowercase words}."""
+    out = {}
+    for line in open(os.path.join(IELTS_DIR, name), encoding="utf-8"):
+        if ":" in line and not line.startswith("#"):
+            key, words = line.split(":", 1)
+            out[key.strip()] = {w.strip().lower() for w in words.split(",") if w.strip()}
+    return out
+
+
+_idp = _read_lists("idp_listening.txt")
+IDP_MISSPELLED = _idp.pop("misspelled")
+IDP_LISTENING = set().union(*_idp.values()) | IDP_MISSPELLED
+AWL_SUBLIST = {}
+for _n, _forms in sorted(_read_lists("awl_sublists.txt").items(), key=lambda kv: -int(kv[0])):
+    AWL_SUBLIST.update({f: int(_n) for f in _forms})  # a form in two sublists keeps the lower number
+
+# Patterns that make English words hard to spell; each match adds to the difficulty.
+TRICKY_SPELLING = [
+    r"([a-z])\1",                       # double letters: accommodation, committee
+    r"ough|augh|eigh",                  # thought, height
+    r"^ps|^pn|^kn|^wr|mn$|mb$|gn",      # silent letters: psychology, autumn, foreign
+    r"dnes|rnm|bt|stl|[aeiou]lk|[aeiou]lm",  # Wednesday, government, debt, castle, talk, calm
+    r"rh|ph",                           # rhythm, phenomenon
+    r"sc[eiy]",                         # science, conscious
+    r"ei|ie",                           # receive, believe
+    r"[iu]ous$|eous$",                  # various, courageous
+    r"[ae]nce$|[ae]nt$|[ai]ble$",       # existence, independent, responsible
+    r"que$|cq|ch[aeiour]",              # technique, acquire, character
+    r"ae|oe|ai(?!n)",                   # aesthetic, Wednesday
+    r"y[^aeiou]",                       # rhythm, analysis
+]
+
+
+def spelling_difficulty(word):
+    w = word.lower()
+    score = 0.2 * sum(len(re.findall(p, w)) for p in TRICKY_SPELLING)
+    score += min(0.4, max(0, len(w) - 7) * 0.06)
+    return min(score, 1.2)
 
 
 def usefulness(e):
+    forms = {e["w"].lower(), *e["alt"]}
     topics = LISTED_IN.get(e["w"].lower(), {e["t"]})
     score = e["f"] + max(TOPIC_BONUS.get(t, OTHER_TOPIC_BONUS) for t in topics)
+    if forms & IDP_LISTENING:
+        score += LISTENING_BONUS
+    if forms & IDP_MISSPELLED:
+        score += LISTENING_MISSPELLED_BONUS
+    sublists = [AWL_SUBLIST[f] for f in forms if f in AWL_SUBLIST]
+    if sublists:
+        score += 3.75 - 0.35 * min(sublists)
+    if not (forms & IDP_MISSPELLED or "Commonly Misspelled Words" in topics):
+        score += LEVEL_ADJUST[e["c"]]
+    if forms & CLASSIC_TRAPS:
+        score += 1.0
+    score += DIFFICULTY_WEIGHT * spelling_difficulty(e["w"])
     if len(e["w"]) <= 4:
         score -= 0.4  # short words are rarely hard to spell
     return score
 
 
-FAMILY_SUFFIXES = ("ation", "ment", "ion", "ing", "ed", "ly", "s", "e")
+FAMILY_SUFFIXES = ("ibility", "ability", "ically", "ical", "ation", "ition", "ment", "ness", "ance", "ence",
+                   "ancy", "ency", "able", "ible", "ity", "ism", "ist", "ive", "ion", "ant", "ent", "ing",
+                   "ic", "al", "ed", "ly", "s", "e", "y")
+# Negative and other prefixes that keep the word family: legal/illegal, migrant/immigrant,
+# population/overpopulation. Words that only look prefixed are listed in NOT_FAMILY.
+FAMILY_PREFIXES = ("non-", "non", "dis", "mis", "un", "in", "im", "il", "ir", "over", "under")
+NOT_FAMILY = {frozenset(p) for p in (
+    ("stance", "instance"), ("jury", "injury"), ("appoint", "disappoint"), ("corporate", "incorporate"),
+    ("inform", "informal"), ("universe", "university"), ("position", "positive"), ("hospital", "hospitality"),
+    ("execution", "executive"), ("author", "authority"), ("comment", "commence"), ("organic", "organise"),
+    ("celebration", "celebrity"), ("competence", "competition"), ("competition", "competent"),
+    ("considerable", "considering"), ("consist", "inconsistent"), ("discrimination", "criminal"),
+    ("experiment", "experience"), ("format", "information"), ("identical", "identity"),
+    ("integral", "integrity"), ("integrity", "integration"), ("mediate", "immediately"),
+    ("steady", "instead"), ("vegetation", "vegetable"), ("misinformation", "informal"), ("exam", "example"), ("carbon", "carbohydrate"),
+    ("define", "definitely"), ("define", "definite"),
+)}
 
 
 def family_stems(word):
-    """automated / automation -> both include "automat" (a light suffix strip, not a full stemmer)."""
+    """sustainable / sustainability -> both include "sustain" (a light suffix strip, not a full stemmer)."""
     return {word} | {word[: -len(suf)] for suf in FAMILY_SUFFIXES if word.endswith(suf) and len(word) - len(suf) >= 5}
 
 
 def similar(a, b):
-    """Same word family or near-identical spelling: develop/development, automated/automation."""
+    """Same word family or near-identical spelling: develop/development, sustainable/sustainability,
+    relevant/irrelevant, migrant/immigrant."""
     short, long_ = sorted((a.lower(), b.lower()), key=len)
+    if frozenset((short, long_)) in NOT_FAMILY:
+        return False
     k = max(5, len(short) - 1) if len(short) >= 5 else len(short)
-    return long_.startswith(short[:k]) or bool(family_stems(short) & family_stems(long_))
+    if long_.startswith(short[:k]) or family_stems(short) & family_stems(long_):
+        return True
+    # Prefixed: the rest must be the other word or share its stem exactly (not just start the same)
+    return any(long_.startswith(p) and len(long_) - len(p) >= 5
+               and (long_[len(p):] == short or family_stems(long_[len(p):]) & family_stems(short))
+               for p in FAMILY_PREFIXES)
 
 
 def family_passes(entries):
@@ -160,25 +271,41 @@ def family_passes(entries):
     return passes
 
 
-def interleave_levels(entries):
-    """Order words so every prefix keeps LEVEL_SHARE (smooth weighted round-robin over levels)."""
-    queues = {c: [e for e in entries if e["c"] == c] for c in CEFR_ORDER}  # already by usefulness
-    credit = {c: 0.0 for c in CEFR_ORDER}
+def ielts_source(e):
+    """The IELTS source a word is counted under (see SOURCE_SHARE)."""
+    forms = {e["w"].lower(), *e["alt"]}
+    topics = LISTED_IN.get(e["w"].lower(), {e["t"]})
+    if forms & IDP_LISTENING:
+        return "listening"
+    if "Commonly Misspelled Words" in topics:
+        return "misspelled"
+    if any(f in AWL_SUBLIST for f in forms):
+        return "academic"
+    if any(t.startswith("Writing Task") for t in topics):
+        return "writing"
+    return "topic"
+
+
+def interleave_sources(entries):
+    """Order words so every prefix keeps SOURCE_SHARE (smooth weighted round-robin over sources).
+    When a source runs out, the others share its place."""
+    queues = {s: [e for e in entries if ielts_source(e) == s] for s in SOURCE_SHARE}  # by usefulness
+    credit = {s: 0.0 for s in SOURCE_SHARE}
     out = []
     while any(queues.values()):
-        active = [c for c in CEFR_ORDER if queues[c]]
-        for c in active:
-            credit[c] += LEVEL_SHARE[c]
-        level = max(active, key=lambda c: credit[c])
-        credit[level] -= sum(LEVEL_SHARE[c] for c in active)
-        out.append(queues[level].pop(0))
+        active = [s for s in SOURCE_SHARE if queues[s]]
+        for s in active:
+            credit[s] += SOURCE_SHARE[s]
+        source = max(active, key=lambda s: credit[s])
+        credit[source] -= sum(SOURCE_SHARE[s] for s in active)
+        out.append(queues[source].pop(0))
     return out
 
 
 def rank_words(entries):
-    """Set e["r"] (1 = most useful). Each Top N keeps the level mix of LEVEL_SHARE and has
+    """Set e["r"] (1 = most useful). Each Top N keeps the source mix of SOURCE_SHARE and has
     one word per family: the most useful member comes first, the rest only after every family."""
-    ranked = [e for p in family_passes(entries) for e in interleave_levels(p)]
+    ranked = [e for p in family_passes(entries) for e in interleave_sources(p)]
     for i, e in enumerate(ranked, 1):
         e["r"] = i
 
@@ -200,6 +327,91 @@ def cefr_level(word, alts, zipf, levels):
 
 
 LISTED_IN = {}  # word -> every topic it is listed under (a word is shown under the first one)
+
+
+def fd_ipa(w, cache):
+    """The first IPA text in the cached Free Dictionary entries for w ("" if none)."""
+    for entry in (cache.get(w, {}).get("fd") or []):
+        if isinstance(entry, dict):
+            text = entry.get("phonetic") or next((p["text"] for p in entry.get("phonetics", []) if p.get("text")), "")
+            if text:
+                return text
+    return ""
+
+
+def wiktionary_ipa(w):
+    """British (UK/RP) IPA from the word's English Wiktionary entry, else its first IPA.
+
+    Returns "" when the entry has none, and None when the request failed (so it is retried next time).
+    """
+    url = ("https://en.wiktionary.org/w/api.php?action=parse&prop=wikitext&format=json&formatversion=2&page="
+           + urllib.parse.quote(w))
+    for attempt in range(4):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "ielts-spelling-builder/1.0"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                data = json.loads(r.read().decode())
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 429:
+                return "" if e.code == 404 else None
+            time.sleep(10 * (attempt + 1))  # rate limited: back off
+        except Exception:
+            time.sleep(5)
+    else:
+        return None
+    text = data.get("parse", {}).get("wikitext", "")
+    english = re.split(r"\n==[^=]", text.split("==English==", 1)[1])[0] if "==English==" in text else ""
+    # "*" lines are the main accents; "**" lines are regional sub-variants
+    lines = [l for l in english.split("\n") if l.startswith("* ") and "{{IPA|en|" in l]
+    british = [l for l in lines if re.search(r"(a=|\{\{a\|)[^}]*\b(UK|RP|GB|British)\b", l)]
+    for line in british + lines:
+        m = re.search(r"\{\{IPA\|en\|([/\[][^|}]+[/\]])", line)
+        if m:
+            return m.group(1)
+    return ""
+
+
+IPA_OK = set("abdefhijklmnprstuvwzæɑɒɔəɜɪʊʌθðʃʒŋɡːˈˌ()")
+IPA_US = re.compile(r"[ɚɝɾ]|oʊ|ae|ɑ(?!ː)|ɔ(?![ːɪ])|ɜ(?!ː)|[aeiouæɑɒɔəɜɪʊʌː]r(?=[^aeiouæɑɒɔəɜɪʊʌj(]|$)")
+
+
+def clean_ipa(text):
+    """One consistent British IPA style, or "" if the transcription is unusable.
+
+    Sources mix styles (syllable dots, tie bars, ɹ or r, ɛ or e) and sometimes give narrow phonetic
+    [..] forms, American forms or fragments such as /-mɪnt/. Those are rejected so another source,
+    or a hand-written one in curated.json, is used instead.
+    """
+    t = (text or "").strip()
+    if not (t.startswith("/") and t.endswith("/") and len(t) > 2):
+        return ""
+    t = t[1:-1].split(",")[0].strip()
+    t = re.sub(r"\((ɹ|r)\)$", "", t)  # optional linking r: /ˈpɹɛʃə(ɹ)/
+    for a, b in (("t͡ʃ", "tʃ"), ("d͡ʒ", "dʒ"), ("͡", ""), ("̯", ""), ("̩", ""), (".", ""), ("'", "ˈ"),
+                 ("ɹ", "r"), ("ɛ", "e"), ("ɐ", "ʌ"), ("ɨ", "ɪ"), ("g", "ɡ"), ("ɫ", "l"), ("ɝ", "ɜː"), ("ᵻ", "ɪ")):
+        t = t.replace(a, b)
+    t = re.sub(r"\(r\)", "", t)  # optional r
+    t = re.sub(r"\(([^)]*)\)", r"\1", t)  # other optional sounds are kept: /əˈveɪləb(ə)l/
+    for a, b in (("ʌɪ", "aɪ"), ("ʌʊ", "aʊ"), ("hw", "w"), ("əː", "ɜː"), ("ɪː", "iː"), ("ɜːː", "ɜː"), ("ˌˈ", "ˈ")):
+        t = t.replace(a, b)
+    t = re.sub(r"a(?![ɪʊː])", "æ", t)  # /ˈmanjʊəl/ (newer British style) -> /ˈmænjʊəl/
+    t = re.sub(r"(?<![aeɔəʊ])ɪ$", "i", t)  # not the end of a diphthong such as /aɪ/  # /saɪˈkɒlədʒɪ/ -> /saɪˈkɒlədʒi/
+    if not t or t[0] in "-‿" or t[-1] in "-" or any(c not in IPA_OK for c in t) or IPA_US.search(t):
+        return ""
+    return "/" + t + "/"
+
+
+def tidy_definition(text):
+    """Short, learner-friendly clue: the first sentence, without notes and usage examples."""
+    text = re.sub(r"\s*\((see )?Wikipedia[^)]*\)", "", text)
+    text = re.sub(r"\s*\[[^\]]*\]", "", text)           # ["to compare X with Y"]
+    text = re.sub(r"[;,]\s*as,\s.*$", "", text)        # "...; as, the peak of a cap."
+    text = re.sub(r"\s*\((e\.g\.|as in|i\.e\.)[^)]*\)", "", text)  # "(e.g. city council)"
+    first = re.split(r"(?<!\be\.g)(?<!\bi\.e)(?<!\betc)(?<!\b[A-Z])\.\s+(?=[A-Z(])", text, maxsplit=1)[0]
+    if len(first) > 110 and ";" in first and len(first.split(";")[0]) >= 20:
+        first = first.split(";")[0]
+    return first.strip().rstrip(",:")
 
 
 def read_list():
@@ -382,10 +594,25 @@ def main():
     if not offline:
         json.dump(cache, open(CACHE, "w"))
 
-    overrides = {}
-    op = os.path.join(ROOT, "tools", "overrides.json")
-    if os.path.exists(op):
-        overrides = json.load(open(op, encoding="utf-8"))
+    # IPA from Wiktionary for words the Free Dictionary API has no pronunciation for
+    wk_todo = [] if offline else [w for w, _ in words if not fd_ipa(w, cache) and cache.get(w, {}).get("wk_ipa") is None]
+    print(f"fetching {len(wk_todo)} pronunciations from Wiktionary...", flush=True)
+    for i, w in enumerate(wk_todo):
+        ipa = None
+        # British spellings ("analyse") often have only a pointer to the US entry, so try that too
+        for form in [w] + american_variants(w.lower()):
+            ipa = wiktionary_ipa(form)
+            time.sleep(1.5)  # be polite to Wiktionary
+            if ipa:
+                break
+        cache.setdefault(w, {})["wk_ipa"] = ipa
+        if i % 50 == 0:
+            print(f"  {i}/{len(wk_todo)}", flush=True)
+            json.dump(cache, open(CACHE, "w"))
+    if not offline:
+        json.dump(cache, open(CACHE, "w"))
+
+    curated = json.load(open(CURATED, encoding="utf-8")) if os.path.exists(CURATED) else {}
 
     out, missing = [], []
     for w, topic in words:
@@ -406,8 +633,9 @@ def main():
         for entry in (dm.get("fd") or []):
             if not isinstance(entry, dict) or entry.get("word", "").lower() not in [base] + alts:
                 continue
-            phon = phon or entry.get("phonetic") or next(
-                (p["text"] for p in entry.get("phonetics", []) if p.get("text")), "")
+            if not phon:  # the first usable British transcription among this entry's phonetics
+                texts = [entry.get("phonetic")] + [p.get("text") for p in entry.get("phonetics", [])]
+                phon = next((c for c in map(clean_ipa, texts) if c), "")
             for m in entry.get("meanings", []):
                 pos = m.get("partOfSpeech", "")
                 fd_syn += m.get("synonyms", [])
@@ -436,6 +664,7 @@ def main():
         if not meanings:
             meanings = [dict(m) for m in wn_meanings]
         for m in meanings:
+            m["def"] = tidy_definition(m["def"])
             m["def"] = m["def"][0].upper() + m["def"][1:]
             if not m["def"].endswith((".", "?", "!")):
                 m["def"] += "."
@@ -443,12 +672,14 @@ def main():
                 for wm in wn_meanings:
                     if wm["pos"] == m["pos"] and wm["ex"] and has_word(wm["ex"]):
                         m["ex"] = wm["ex"]
-        if base in overrides:
-            o = overrides[base]
-            meanings = o.get("m", meanings)
-            fd_syn = o.get("syn", []) + fd_syn
-            fd_ant = o.get("ant", []) + fd_ant
-        if not meanings:
+        # ---- hand-checked fixes from curated.json (sense, definition, example, clues) ----
+        # A complete curated entry (pos, def, ex) also covers words the dictionaries miss
+        cur = curated.get(w) or curated.get(base) or {}
+        if any(k in cur for k in ("pos", "def", "ex")):
+            first = meanings[0] if meanings else {"pos": "", "def": "", "ex": ""}
+            first = {**first, **{k: cur[k] for k in ("pos", "def", "ex") if k in cur}}
+            meanings = [first] + [m for m in meanings[1:] if m["pos"] != first["pos"]]
+        if not meanings or not meanings[0]["def"]:
             missing.append(w)
             continue
 
@@ -464,34 +695,42 @@ def main():
                 return False
             if len(xl.split()) > 2 or len(xl) > 22:
                 return False
+            # Abbreviations of the word itself ("feb", "sci", "gym") give the answer away
+            if base.startswith(xl) or any(a.startswith(xl) for a in alts):
+                return False
             return min(zipf_frequency(t, "en") for t in xl.split()) >= minz
 
         def pick(cands, minz, limit):
-            res = []
+            res, seen = [], set()
             for c in cands:
                 c = c.strip()
-                if ok(c, minz) and c.lower() not in [r.lower() for r in res]:
+                forms = {c.lower(), *american_variants(c.lower()), c.lower().replace("judgement", "judgment")}
+                # skip abbreviations ("ka") and spelling variants of a word already picked (judgment/judgement)
+                if len(c) >= 3 and ok(c, minz) and not forms & seen:
                     res.append(c)
+                    seen |= forms
                 if len(res) == limit:
                     break
             return res
 
         dm_syn = [d["word"] for d in (dm.get("syn") or [])]
         dm_ant = [d["word"] for d in (dm.get("ant") or [])]
-        o = overrides.get(base, {})
-        syn = pick(o.get("syn", []) + dm_syn[:5] + wn_syn + fd_syn, 2.9, 6)
-        ant = pick(o.get("ant", []) + wn_ant + dm_ant + fd_ant, 2.6, 4)
+        syn = pick(dm_syn[:5] + wn_syn + fd_syn, 2.9, 3)
+        ant = pick(wn_ant + dm_ant + fd_ant, 2.6, 2)
+        # Hand-checked lists win: they match the meaning shown (the page shows 3 synonyms and 2 antonyms)
+        syn = cur.get("syn", syn)
+        ant = cur.get("ant", ant)
 
         freq = max([phrase_zipf(base)] + [phrase_zipf(a) for a in alts])
-        if "f" in o:  # e.g. "found" (to establish) is counted as the past tense of "find"
-            freq = o["f"]
+        if "f" in cur:  # e.g. "found" (to establish) is counted as the past tense of "find"
+            freq = cur["f"]
         out.append({
             "w": w,
             "t": topic,
             "f": round(freq, 2),
-            "ipa": phon,
+            "ipa": cur.get("ipa") or phon or clean_ipa(dm.get("wk_ipa")) or "",
             "alt": alts,
-            "m": meanings,
+            "m": meanings[:1],  # the page shows one meaning: the one that matches the example
             "syn": syn,
             "ant": ant,
         })
@@ -511,8 +750,9 @@ def main():
         sources[how] += 1
 
     # Too basic for IELTS spelling practice: short A1 words (keep the commonly misspelled ones)
+    # IELTS Listening words stay: there a misspelled answer scores zero, however easy the word is
     too_easy = [e["w"] for e in out if e["c"] == "A1" and e["_src"] == "list" and len(e["w"]) < 7
-                and not e["t"].startswith("Commonly")]
+                and not e["t"].startswith("Commonly") and e["w"].lower() not in IDP_LISTENING]
     out = [e for e in out if e["w"] not in too_easy]
     for e in out:
         del e["_src"]
