@@ -1,0 +1,5 @@
+# Only the static site is deployed: index.html, css/, js/, data/, favicon.svg
+.venv
+.claude
+tools
+README.md

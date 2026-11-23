@@ -1,0 +1,14 @@
+# Python build environment (only needed to regenerate data/words.js)
+.venv/
+__pycache__/
+tools/.cache.json
+tools/build.log
+
+# OS / editor
+.DS_Store
+.vscode/
+.vercel
+
+# Local Claude Code tooling; the project's review agent is shared
+.claude/*
+!.claude/agents/
