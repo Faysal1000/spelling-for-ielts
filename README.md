@@ -6,9 +6,9 @@ No backend or database: word data is a static file, and progress is stored in th
 
 ## Features
 
-- The ⚙ Settings button holds words at a time (20, 30, 50 or 100), mistakes allowed, voice and speed; **Show more** adds the next batch, and **New random set** reshuffles in Random order. Each row has a clue card (IPA, part of speech, synonyms, antonyms, meaning) and a typing card
+- The ⚙ Settings button holds words at a time (20, 30, 50 or 100), mistakes allowed, how long a wrong letter stays visible, voice, speed, PDF export and the reset buttons; **Show more** adds the next batch, and **New random set** reshuffles in Random order. Each row has a clue card (IPA, part of speech, synonyms, antonyms, meaning) and a typing card
 - Text-to-speech pronunciation with a British voice where available. Voice and speed can be changed
-- Live letter checking: a wrong letter is rejected as you type and counts as a mistake. After the allowed number of mistakes (1–10 or unlimited, default 5) the word is shown and the next one starts. A correct word moves on automatically. Only the word itself is ever spoken
+- Live letter checking: a wrong letter shows in red for a moment (0.3–2 s, or not at all), is then removed, and counts as a mistake. After the allowed number of mistakes (1–10 or unlimited, default 5) the word is shown and the next one starts. A finished word moves straight on to the next one, which scrolls into view (on phones the keyboard stays open). Only the word itself is ever spoken
 - The word is blanked out of its definition until you answer
 - Filters: 18 topics (the full Academic Word List, Writing Task 1 and 2 language, IELTS topic vocabulary, commonly misspelled words, advanced academic words), CEFR level (A1–C2), new words, mistakes, not mastered
 - Order by frequency, at random, or A to Z

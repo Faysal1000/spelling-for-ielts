@@ -69,6 +69,16 @@
           </select>
         </label>
         <label class="field">
+          <span>Show wrong letter</span>
+          <select id="wrongMs">
+            <option value="0">Don't show</option>
+            <option value="300">0.3 s</option>
+            <option value="500">0.5 s</option>
+            <option value="1000">1 s</option>
+            <option value="2000">2 s</option>
+          </select>
+        </label>
+        <label class="field">
           <span>Voice</span>
           <select id="voice"></select>
         </label>
@@ -80,6 +90,11 @@
             <option value="1">Fast</option>
           </select>
         </label>
+        <div class="settings-actions">
+          <button class="link" id="exportBtn" type="button">Export PDF</button>
+          <button class="link" id="resetBtn" type="button">Reset progress</button>
+          <button class="link danger" id="resetAllBtn" type="button">Reset all</button>
+        </div>
       </div>
     </section>
 
@@ -95,11 +110,6 @@
 
   <footer class="footer">
     <p class="saved-note">Your progress and settings are saved in this browser only.</p>
-    <div class="footer-actions">
-      <button class="link" id="exportBtn" type="button">Export progress (PDF)</button>
-      <button class="link" id="resetBtn" type="button">Reset progress</button>
-      <button class="link danger" id="resetAllBtn" type="button">Reset all</button>
-    </div>
     <p class="credits">
       Definitions from <a href="https://en.wiktionary.org" rel="noopener" target="_blank">Wiktionary</a> (CC BY-SA)
       via <a href="https://dictionaryapi.dev" rel="noopener" target="_blank">Free Dictionary API</a> and from

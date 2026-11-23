@@ -52,7 +52,7 @@
     return out;
   }
   let progress = loadProgress();
-  const DEFAULT_PREFS = { topic: "all", level: "all", status: "all", order: "freq", count: "50", maxMistakes: "5", voice: "", rate: "0.85" };
+  const DEFAULT_PREFS = { topic: "all", level: "all", status: "all", order: "freq", count: "50", maxMistakes: "5", wrongMs: "500", voice: "", rate: "0.85" };
   const prefs = { ...DEFAULT_PREFS };
   for (const [k, v] of Object.entries(storage.get(KEY_PREFS, {}))) if (k in prefs && typeof v === "string") prefs[k] = v;
   const savePrefs = () => storage.set(KEY_PREFS, prefs);
@@ -154,6 +154,7 @@
   let live = newLive(); // typing state of the active word: row, correct prefix, mistakes
   let autoNextTimer = 0;
 
+  let wrong = { input: null, value: "", timer: 0 }; // a rejected letter shown briefly in red
   const batchSize = () => Number(prefs.count) || 50;
   const maxMistakes = () => Number(prefs.maxMistakes) || 0; // 0 = unlimited
 
@@ -163,6 +164,7 @@
     results = new Map();
     active = 0;
     shown = 0;
+    clearWrong(false);
     live = newLive();
     clearTimeout(autoNextTimer);
     stopSpeech();
@@ -254,8 +256,8 @@
     if (!result) return "";
     if (result.done) {
       const note = result.mistakes ? ` · ${result.mistakes} mistake${result.mistakes > 1 ? "s" : ""}` : "";
-      return `<div class="result ${result.mistakes ? "warn" : "ok"}"><span class="verdict">${ICONS.check}Correct${note}</span>
-        <span class="word">${esc(word.w)}</span></div>`;
+      // The word is already in the input, so only the verdict is shown
+      return `<div class="result ${result.mistakes ? "warn" : "ok"}"><span class="verdict">${ICONS.check}Correct${note}</span></div>`;
     }
     // Out of tries: show the full word, the part they got right in green
     const got = result.typed.length;
@@ -263,26 +265,30 @@
       <span class="word" aria-label="Correct spelling ${esc(word.w)}"><span class="good">${esc(word.w.slice(0, got))}</span><span class="miss">${esc(word.w.slice(got))}</span></span></div>`;
   }
 
+  const rowState = result => (result ? (result.done ? (result.mistakes ? " warn" : " ok") : " bad") : "");
+  const answerValue = (word, result) => (result ? (result.done ? word.w : result.typed) : "");
+  function markHtml(word) {
+    const st = statusOf(word);
+    if (st !== "mastered" && st !== "weak") return '<span class="mark" aria-hidden="true"></span>';
+    const label = st === "mastered" ? "Mastered" : "In your mistakes";
+    return `<span class="mark ${st}" role="img" aria-label="${label}" title="${label}"></span>`;
+  }
+
   function rowHtml(word, n) {
     const result = results.get(word.i);
-    const st = statusOf(word);
-    const rowClass = result ? (result.done ? (result.mistakes ? " warn" : " ok") : " bad") : "";
-    const value = result ? (result.done ? word.w : result.typed) : "";
-    return `<article class="row${rowClass}" data-row="${n}">
+    return `<article class="row${rowState(result)}" data-row="${n}">
       <div class="card info-card">
         <div class="info-head">
           <button class="speak" type="button" data-speak="${n}" aria-label="Hear word ${n + 1}">${ICONS.speaker}</button>
           <span class="esc">[Esc]</span>
           <span class="num">(${n + 1})</span>
-          ${st === "mastered" || st === "weak"
-            ? `<span class="mark ${st}" role="img" aria-label="${st === "mastered" ? "Mastered" : "In your mistakes"}" title="${st === "mastered" ? "Mastered" : "In your mistakes"}"></span>`
-            : '<span class="mark" aria-hidden="true"></span>'}
+          ${markHtml(word)}
           ${word.c ? `<span class="cefr cefr-${word.c[0]}" title="CEFR level ${word.c}">${word.c}</span>` : ""}
         </div>
         <div class="clue">${clueHtml(word, !!result)}</div>
       </div>
       <div class="card answer-card">
-        <input class="answer" type="text" data-input="${n}" value="${esc(value)}" ${result ? "readonly" : ""}
+        <input class="answer" type="text" data-input="${n}" value="${esc(answerValue(word, result))}" ${result ? "readonly" : ""}
           autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="next"
           placeholder="Type the word you hear" aria-label="Spelling for word ${n + 1}">
         <div class="feedback" aria-live="polite">${answerHtml(word, result)}</div>
@@ -290,11 +296,25 @@
     </article>`;
   }
 
+  // Update a row in place (not by re-rendering it), so a focused input and the phone keyboard survive
   function updateRow(n) {
-    const old = document.querySelector(`[data-row="${n}"]`);
-    if (!old) return;
-    old.outerHTML = rowHtml(list[n], n);
-    markActive();
+    const row = document.querySelector(`[data-row="${n}"]`);
+    if (!row) return;
+    const word = list[n], result = results.get(word.i);
+    row.className = `row${rowState(result)}${n === active ? " active" : ""}`;
+    row.querySelector(".mark").outerHTML = markHtml(word);
+    row.querySelector(".clue").innerHTML = clueHtml(word, !!result);
+    const input = row.querySelector(".answer");
+    input.value = answerValue(word, result);
+    input.readOnly = !!result;
+    row.querySelector(".feedback").innerHTML = answerHtml(word, result);
+  }
+
+  // Phones: put the row near the top so the keyboard can't cover it. Laptops: centre it.
+  const narrow = window.matchMedia("(max-width: 640px)");
+  function scrollToRow(n) {
+    const row = document.querySelector(`[data-row="${n}"]`);
+    if (row) row.scrollIntoView({ behavior: "smooth", block: narrow.matches ? "start" : "center" });
   }
 
   function markActive() {
@@ -307,6 +327,7 @@
   function setActive(n, { play = true, scroll = true } = {}) {
     if (n < 0 || n >= shown) return;
     clearTimeout(autoNextTimer);
+    clearWrong();
     if (live.n !== n) live = newLive(n);
     // An unfinished word you leave starts fresh when you come back
     const prevInput = document.querySelector(`[data-input="${active}"]`);
@@ -318,7 +339,7 @@
     markActive();
     const input = document.querySelector(`[data-input="${n}"]`);
     if (input && document.activeElement !== input) input.focus({ preventScroll: true });
-    if (scroll) document.querySelector(`[data-row="${n}"]`).scrollIntoView({ behavior: "smooth", block: "center" });
+    if (scroll) scrollToRow(n);
     if (play && !results.has(list[n].i)) speak(list[n].w);
   }
 
@@ -329,14 +350,31 @@
   const sameChar = (typed, expected) => typed === expected || (expected === "-" && typed === " ") || (expected === " " && typed === "-");
   const isPrefix = (typed, form) => typed.length <= form.length && [...typed].every((c, k) => sameChar(c, form[k]));
 
+  // Ends the red "wrong letter" display; with revert, puts the input back to the correct part
+  function clearWrong(revert = true) {
+    if (!wrong.input) return;
+    clearTimeout(wrong.timer);
+    wrong.input.classList.remove("wrong");
+    if (revert && wrong.input.value.toLowerCase() === wrong.value) wrong.input.value = live.valid;
+    wrong = { input: null, value: "", timer: 0 };
+  }
+
   function onType(input) {
     const n = Number(input.dataset.input);
     const word = list[n];
     if (results.has(word.i)) return;
     if (live.n !== n) live = newLive(n);
-    const typed = input.value.toLowerCase();
-    const candidates = forms(word);
+    let typed = input.value.toLowerCase();
 
+    // Typing on while a wrong letter is still shown: drop it and keep only what is new
+    if (wrong.input === input) {
+      const extra = typed.startsWith(wrong.value) ? typed.slice(wrong.value.length) : "";
+      clearWrong(false);
+      typed = live.valid + extra;
+      input.value = typed;
+    }
+
+    const candidates = forms(word);
     if (candidates.some(f => isPrefix(typed, f))) {
       live.valid = typed;
       if (input.value !== typed) input.value = typed;
@@ -344,29 +382,44 @@
       return;
     }
 
-    // Wrong letter: reject it and count a mistake
+    // Wrong letter: count a mistake, show it in red for a moment, then remove it
     const wrongChar = [...typed].find((c, k) => !candidates.some(f => isPrefix(typed.slice(0, k + 1), f))) || "";
-    input.value = live.valid;
     live.mistakes += 1;
     const card = input.closest(".answer-card");
     card.classList.remove("shake");
     void card.offsetWidth; // restart the animation
     card.classList.add("shake");
     const max = maxMistakes();
-    if (max && live.mistakes >= max) { finish(n, false); return; }
+    if (max && live.mistakes >= max) { input.value = live.valid; finish(n, false); return; }
     card.querySelector(".feedback").innerHTML = triesHtml(live.mistakes, wrongChar.trim() ? wrongChar : "space");
+    const showMs = Number(prefs.wrongMs) || 0;
+    if (showMs > 0) {
+      input.value = typed;
+      input.classList.add("wrong");
+      wrong = { input, value: typed, timer: setTimeout(() => clearWrong(), showMs) };
+    } else {
+      input.value = live.valid;
+    }
   }
 
+  // Record the answer and move to the next word straight away. Focus moves while the
+  // keystroke is still being handled, so phones keep the keyboard open; the next
+  // word is spoken after a short pause so the result can be read.
   function finish(n, done) {
     const word = list[n];
     results.set(word.i, { done, mistakes: live.mistakes, typed: live.valid });
     record(word, done && live.mistakes === 0);
-    updateRow(n);
     renderStats();
-    const input = document.querySelector(`[data-input="${n}"]`);
-    if (input) input.focus({ preventScroll: true });
+    if (n >= shown - 1 && shown < list.length) showMore();
+    const next = n + 1 < shown ? n + 1 : n;
+    if (next !== n) setActive(next, { play: false });
+    updateRow(n);
     clearTimeout(autoNextTimer);
-    autoNextTimer = setTimeout(() => { if (active === n) goNext(); }, done ? NEXT_AFTER_OK_MS : NEXT_AFTER_FAIL_MS);
+    if (next !== n) {
+      autoNextTimer = setTimeout(() => {
+        if (active === next && !results.has(list[next].i)) speak(list[next].w);
+      }, done ? NEXT_AFTER_OK_MS : NEXT_AFTER_FAIL_MS);
+    }
   }
 
   function goNext() {
@@ -445,6 +498,7 @@
   $("#voice").addEventListener("change", e => { prefs.voice = e.target.value; savePrefs(); speak(SAMPLE_WORD); });
   $("#rate").addEventListener("change", e => { prefs.rate = e.target.value; savePrefs(); speak(SAMPLE_WORD); });
   $("#maxMistakes").addEventListener("change", e => { prefs.maxMistakes = e.target.value; savePrefs(); });
+  $("#wrongMs").addEventListener("change", e => { prefs.wrongMs = e.target.value; savePrefs(); });
   $("#settingsBtn").addEventListener("click", e => {
     const open = e.currentTarget.getAttribute("aria-expanded") !== "true";
     e.currentTarget.setAttribute("aria-expanded", String(open));
@@ -539,7 +593,7 @@
       alert("Could not create the PDF. Check your internet connection and try again.");
     } finally {
       btn.disabled = false;
-      btn.textContent = "Export progress (PDF)";
+      btn.textContent = "Export PDF";
     }
   }
   $("#exportBtn").addEventListener("click", exportPdf);
@@ -564,7 +618,7 @@
   $("#topic").innerHTML = '<option value="all">All topics</option>' +
     TOPICS.map(t => `<option value="${esc(t)}">${esc(t)} (${WORDS.filter(w => w.t === t).length})</option>`).join("");
   // A saved value that is no longer an option (renamed topic, old version) falls back to the default
-  for (const id of ["topic", "level", "status", "order", "count", "maxMistakes", "rate"]) {
+  for (const id of ["topic", "level", "status", "order", "count", "maxMistakes", "wrongMs", "rate"]) {
     const select = $("#" + id);
     select.value = prefs[id];
     if (select.value !== prefs[id]) select.value = prefs[id] = DEFAULT_PREFS[id];

@@ -75,11 +75,16 @@ button { cursor: pointer; }
 .settings {
   flex-basis: 100%;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  padding-top: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--shade);
 }
+.settings .field { gap: 2px; }
+.settings .field > span { font-size: 12px; }
+.settings select { height: 38px; border-radius: 10px; }
+.settings-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0 -8px -6px; }
+.settings-actions .link { min-height: 40px; padding: 8px; }
 .field { display: grid; gap: 4px; min-width: 0; }
 .field > span { font-size: 13px; font-weight: 700; color: var(--muted); padding-left: 4px; }
 select {
@@ -106,6 +111,7 @@ select {
 
 /* ---------- Word rows ---------- */
 .rows { display: grid; gap: 14px; }
+.row { scroll-margin-top: 12px; }
 .row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -173,6 +179,7 @@ select {
 .answer:focus { outline: none; }
 .answer:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .answer[readonly] { cursor: default; }
+.answer.wrong { color: var(--bad); }
 .answer::placeholder { color: var(--faint); font-weight: 600; letter-spacing: 0; font-size: 15px; }
 
 .tries { display: grid; gap: 8px; justify-items: center; color: var(--bad); font-size: 14px; font-weight: 700; text-align: center; }
@@ -209,11 +216,10 @@ select {
 .empty { padding: 40px 20px; text-align: center; color: var(--muted); border-radius: var(--radius); box-shadow: var(--inset); }
 
 .footer { padding: 10px 20px max(36px, env(safe-area-inset-bottom)); text-align: center; }
-.saved-note { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
-.footer-actions { display: flex; justify-content: center; gap: 6px 14px; flex-wrap: wrap; }
+.saved-note { margin: 0; color: var(--muted); font-size: 14px; }
 .link.danger { color: var(--bad); }
 .link:disabled { color: var(--faint); cursor: progress; }
-.credits { max-width: 640px; margin: 18px auto 0; color: var(--faint); font-size: 12.5px; line-height: 1.6; }
+.credits { max-width: 640px; margin: 10px auto 0; color: var(--faint); font-size: 12.5px; line-height: 1.6; }
 .credits a { color: inherit; text-underline-offset: 2px; }
 .link { min-height: 44px; border: 0; background: none; padding: 10px 12px; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; }
 .link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
