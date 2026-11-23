@@ -1,11 +1,12 @@
 """Build data/words.js from tools/wordlist.txt.
 
-Meanings, examples, synonyms and antonyms come from WordNet (offline, via nltk).
-Synonyms/antonyms are supplemented, and word frequency is fetched, from the
-Datamuse API (https://www.datamuse.com/api/). Results are cached in
-tools/.cache.json so re-runs are fast.
+Definitions, examples and IPA come from the Free Dictionary API (Wiktionary), with WordNet
+(via nltk) for meaning ranking and extra synonyms/antonyms. Synonyms/antonyms also come from
+the Datamuse API, word frequency from wordfreq, and CEFR levels from the CEFR-J/Octanove
+profiles in tools/cefr/. Each word also gets a usefulness rank for the Top N lists.
+API responses are cached in tools/.cache.json; --offline rebuilds from the cache only.
 
-Run:  NLTK_DATA=.venv/nltk_data .venv/bin/python tools/build_data.py
+Run:  NLTK_DATA=.venv/nltk_data .venv/bin/python tools/build_data.py [--offline]
 """
 import csv
 import json
@@ -105,44 +106,79 @@ def phrase_zipf(text):
     return zipf_frequency(" ".join(parts), "en") - min(1.8, 1.0 * (len(parts) - 1))
 
 
-# ---- ranking: "Top 100 / 500 / ..." = most useful words for IELTS spelling ----
-# Frequency, nudged towards IELTS topics and commonly misspelled words, and away from very easy or rare ones.
+# ---- ranking: "Top 300 / 500 / ..." = most useful words for IELTS spelling ----
+# Every Top list mixes CEFR levels in fixed shares. IELTS maps band 5.5-6.5 to B2, 7-8 to C1 and
+# 8.5+ to C2 (ielts.org), so B2 and C1 get the largest shares. Band 7+ needs "less common lexical
+# items", so C1/C2 are always included. Listening needs the high-frequency words plus the Academic
+# Word List, so B1 keeps a solid share. A1/A2 words are mostly easy to spell, so they get little.
+LEVEL_SHARE = {"A1": 0.05, "A2": 0.10, "B1": 0.20, "B2": 0.275, "C1": 0.25, "C2": 0.125}
+
+# Within a level: frequency, nudged up for IELTS topics, Writing vocabulary and common misspellings.
 TOPIC_BONUS = {
-    "Commonly Misspelled Words": 0.8,
+    "Commonly Misspelled Words": 1.5,  # this is a spelling site: classic traps come first
     "Writing Task 1: Charts & Trends": 0.5,
     "Writing Task 2: Argument & Linking": 0.5,
-    "Academic Core": 0.4,
+    "Academic Core": 0.4,  # the Academic Word List
     "Common Verbs & Adjectives for IELTS": 0.2,
     "Advanced Academic Words": 0.0,
 }
 OTHER_TOPIC_BONUS = 0.3  # IELTS topic vocabulary (Environment, Education, ...)
-LEVEL_BONUS = {"A1": -0.7, "A2": -0.25, "B1": 0.0, "B2": 0.1, "C1": 0.0, "C2": -0.3}
 
 
 def usefulness(e):
-    score = e["f"] + TOPIC_BONUS.get(e["t"], OTHER_TOPIC_BONUS) + LEVEL_BONUS[e["c"]]
+    topics = LISTED_IN.get(e["w"].lower(), {e["t"]})
+    score = e["f"] + max(TOPIC_BONUS.get(t, OTHER_TOPIC_BONUS) for t in topics)
     if len(e["w"]) <= 4:
         score -= 0.4  # short words are rarely hard to spell
     return score
 
 
+FAMILY_SUFFIXES = ("ation", "ment", "ion", "ing", "ed", "ly", "s", "e")
+
+
+def family_stems(word):
+    """automated / automation -> both include "automat" (a light suffix strip, not a full stemmer)."""
+    return {word} | {word[: -len(suf)] for suf in FAMILY_SUFFIXES if word.endswith(suf) and len(word) - len(suf) >= 5}
+
+
 def similar(a, b):
-    """Same word family or near-identical spelling: develop/development, economy/economic."""
+    """Same word family or near-identical spelling: develop/development, automated/automation."""
     short, long_ = sorted((a.lower(), b.lower()), key=len)
     k = max(5, len(short) - 1) if len(short) >= 5 else len(short)
-    return long_.startswith(short[:k])
+    return long_.startswith(short[:k]) or bool(family_stems(short) & family_stems(long_))
 
 
-def rank_words(entries):
-    """Set e["r"] (1 = most useful). A word goes after every word it is not similar to,
-    so each Top N list has one word per family instead of several near-duplicates."""
-    rest, ranked = sorted(entries, key=usefulness, reverse=True), []
+def family_passes(entries):
+    """Split words into passes: pass 1 has the most useful word of each family, pass 2 the next, ..."""
+    rest, passes = sorted(entries, key=usefulness, reverse=True), []
     while rest:
         picked, deferred = [], []
         for e in rest:
             (deferred if any(similar(e["w"], p["w"]) for p in picked) else picked).append(e)
-        ranked += picked
+        passes.append(picked)
         rest = deferred
+    return passes
+
+
+def interleave_levels(entries):
+    """Order words so every prefix keeps LEVEL_SHARE (smooth weighted round-robin over levels)."""
+    queues = {c: [e for e in entries if e["c"] == c] for c in CEFR_ORDER}  # already by usefulness
+    credit = {c: 0.0 for c in CEFR_ORDER}
+    out = []
+    while any(queues.values()):
+        active = [c for c in CEFR_ORDER if queues[c]]
+        for c in active:
+            credit[c] += LEVEL_SHARE[c]
+        level = max(active, key=lambda c: credit[c])
+        credit[level] -= sum(LEVEL_SHARE[c] for c in active)
+        out.append(queues[level].pop(0))
+    return out
+
+
+def rank_words(entries):
+    """Set e["r"] (1 = most useful). Each Top N keeps the level mix of LEVEL_SHARE and has
+    one word per family: the most useful member comes first, the rest only after every family."""
+    ranked = [e for p in family_passes(entries) for e in interleave_levels(p)]
     for i, e in enumerate(ranked, 1):
         e["r"] = i
 
@@ -163,6 +199,9 @@ def cefr_level(word, alts, zipf, levels):
     return level, "estimate"
 
 
+LISTED_IN = {}  # word -> every topic it is listed under (a word is shown under the first one)
+
+
 def read_list():
     words, seen = [], set()
     topic = None
@@ -176,7 +215,10 @@ def read_list():
         for w in line.split(","):
             w = w.strip()
             key = w.lower()
-            if not w or key in seen or key in SKIP:
+            if not w or key in SKIP:
+                continue
+            LISTED_IN.setdefault(key, set()).add(topic)
+            if key in seen:
                 continue
             seen.add(key)
             words.append((w, topic))
