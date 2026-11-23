@@ -12,7 +12,7 @@ You review a static website: plain HTML, CSS and vanilla JavaScript, with no fra
 - `index.html`: page markup (toolbar filters, word rows, Show more, footer)
 - `css/styles.css`: single neumorphic light theme; tokens on `:root`
 - `js/app.js`: all app logic in one IIFE. Sections: storage, speech, filtering, list state, rendering, practice actions (live letter checking, mistake limit, auto-next), events, PDF export, start-up
-- `data/words.js`: generated data, `window.IELTS_WORDS = [...]`. Fields: `w` word, `t` topic, `f` Zipf frequency, `c` CEFR level, `ipa`, `alt` accepted spellings, `m` meanings `[{pos, def, ex}]`, `syn`, `ant`
+- `data/words.js`: generated data, `window.IELTS_WORDS = [...]`. Fields: `w` word, `t` topic, `f` Zipf frequency, `c` CEFR level, `r` usefulness rank (1 = most useful; Top N filter), `ipa`, `alt` accepted spellings, `m` meanings `[{pos, def, ex}]`, `syn`, `ant`
 - `tools/build_data.py`: regenerates the data from `tools/wordlist.txt` (WordNet, Free Dictionary API, Datamuse, wordfreq, CEFR-J/Octanove lists in `tools/cefr/`)
 
 ## What to check
@@ -26,7 +26,7 @@ You review a static website: plain HTML, CSS and vanilla JavaScript, with no fra
 
    Look for stale state between `live`, `results`, `active` and `shown`, timers that fire after the user moved on, and indexes out of range.
 2. **Data integrity** in `data/words.js`. Run a short Node script that loads it with a fake `window` and checks:
-   - every entry has `w`, `t`, `c` in A1–C2 and at least one meaning with a definition
+   - every entry has `w`, `t`, `c` in A1–C2, a unique rank `r` from 1 to the word count, and at least one meaning with a definition
    - there are no duplicate words
    - no word appears unmasked in its own definition (look at `blankRegex` in app.js)
    - synonyms and antonyms are not the word itself

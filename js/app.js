@@ -52,7 +52,7 @@
     return out;
   }
   let progress = loadProgress();
-  const DEFAULT_PREFS = { topic: "all", level: "all", status: "all", order: "freq", count: "50", maxMistakes: "5", wrongMs: "500", voice: "", rate: "0.85" };
+  const DEFAULT_PREFS = { top: "all", topic: "all", level: "all", status: "all", order: "rank", count: "50", maxMistakes: "5", wrongMs: "500", voice: "", rate: "0.85" };
   const prefs = { ...DEFAULT_PREFS };
   for (const [k, v] of Object.entries(storage.get(KEY_PREFS, {}))) if (k in prefs && typeof v === "string") prefs[k] = v;
   const savePrefs = () => storage.set(KEY_PREFS, prefs);
@@ -123,13 +123,14 @@
 
   function filteredWords() {
     const list = WORDS.filter(w =>
+      (prefs.top === "all" || w.r <= Number(prefs.top)) &&
       (prefs.topic === "all" || w.t === prefs.topic) &&
       (prefs.level === "all" || w.c === prefs.level) &&
       (prefs.status === "all" ||
         (prefs.status === "notmastered" ? statusOf(w) !== "mastered" : statusOf(w) === prefs.status)));
     if (prefs.order === "alpha") return list.sort((a, b) => a.key.localeCompare(b.key));
     if (prefs.order === "random") return shuffleStable(list);
-    return list.sort((a, b) => b.f - a.f);
+    return list.sort((a, b) => a.r - b.r); // "Top first": most useful words first
   }
 
   // Seeded shuffle: the random order only changes when asked to (so "Show more" continues the same set)
@@ -488,7 +489,7 @@
     window.scrollTo({ top: $("#listInfo").offsetTop - 16, behavior: "smooth" });
   });
 
-  for (const id of ["topic", "level", "status", "order", "count"]) {
+  for (const id of ["top", "topic", "level", "status", "order", "count"]) {
     $("#" + id).addEventListener("change", e => {
       prefs[id] = e.target.value;
       if (id === "order") shuffleSeed = newSeed();
@@ -615,10 +616,11 @@
     $("#rows").innerHTML = '<p class="empty">Word data is missing. Run tools/build_data.py to create data/words.js.</p>';
     return;
   }
+  $('#top option[value="all"]').textContent = `All ${fmt(WORDS.length)} words`;
   $("#topic").innerHTML = '<option value="all">All topics</option>' +
     TOPICS.map(t => `<option value="${esc(t)}">${esc(t)} (${WORDS.filter(w => w.t === t).length})</option>`).join("");
   // A saved value that is no longer an option (renamed topic, old version) falls back to the default
-  for (const id of ["topic", "level", "status", "order", "count", "maxMistakes", "wrongMs", "rate"]) {
+  for (const id of ["top", "topic", "level", "status", "order", "count", "maxMistakes", "wrongMs", "rate"]) {
     const select = $("#" + id);
     select.value = prefs[id];
     if (select.value !== prefs[id]) select.value = prefs[id] = DEFAULT_PREFS[id];

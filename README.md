@@ -11,7 +11,8 @@ No backend or database: word data is a static file, and progress is stored in th
 - Live letter checking: a wrong letter shows in red for a moment (0.3–2 s, or not at all), is then removed, and counts as a mistake. After the allowed number of mistakes (1–10 or unlimited, default 5) the word is shown and the next one starts. A finished word moves straight on to the next one, which scrolls into view (on phones the keyboard stays open). Only the word itself is ever spoken
 - The word is blanked out of its definition until you answer
 - Filters: 18 topics (the full Academic Word List, Writing Task 1 and 2 language, IELTS topic vocabulary, commonly misspelled words, advanced academic words), CEFR level (A1–C2), new words, mistakes, not mastered
-- Order by frequency, at random, or A to Z
+- **Top 100 / 500 / 1,000 / 1,500 / All**: the most useful words for IELTS spelling. The rank uses word frequency, nudged up for IELTS topics, Writing vocabulary and commonly misspelled words, and down for very easy or rare words. Each Top list has one word per family (development, not also develop), so similar words don't repeat
+- Order: Top first, at random, or A to Z
 - Progress and settings are saved in the browser (localStorage). A word counts as mastered after 3 mistake-free answers in a row. **Export progress** downloads a PDF report (summary, progress per CEFR level, words to review with meanings, mastered words); **Reset all** clears everything
 - British and American spellings are both accepted (organise/organize, colour/color)
 - One soft light (neumorphic) theme, works on phone and laptop, autocorrect is turned off in the answer box
@@ -87,6 +88,6 @@ API responses are cached in `tools/.cache.json`, so re-runs after editing `wordl
 ### Data entry format
 
 ```js
-{ w: "accommodation", t: "Urban Life, Housing & Transport", f: 4.1, c: "B2", ipa: "/əˌkɒməˈdeɪʃən/",
+{ w: "accommodation", t: "Urban Life, Housing & Transport", f: 4.1, c: "B2", r: 978, ipa: "/əˌkɒməˈdeɪʃən/",
   alt: [], m: [{ pos: "noun", def: "…", ex: "…" }], syn: ["lodging", "housing"], ant: [] }
 ```

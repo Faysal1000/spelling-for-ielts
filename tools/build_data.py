@@ -99,6 +99,54 @@ def load_cefr():
     return levels
 
 
+def phrase_zipf(text):
+    """Zipf frequency; wordfreq scores "part-time" almost like "part", so lower it per extra part."""
+    parts = re.split(r"[-\s]+", text)
+    return zipf_frequency(" ".join(parts), "en") - min(1.8, 1.0 * (len(parts) - 1))
+
+
+# ---- ranking: "Top 100 / 500 / ..." = most useful words for IELTS spelling ----
+# Frequency, nudged towards IELTS topics and commonly misspelled words, and away from very easy or rare ones.
+TOPIC_BONUS = {
+    "Commonly Misspelled Words": 0.8,
+    "Writing Task 1: Charts & Trends": 0.5,
+    "Writing Task 2: Argument & Linking": 0.5,
+    "Academic Core": 0.4,
+    "Common Verbs & Adjectives for IELTS": 0.2,
+    "Advanced Academic Words": 0.0,
+}
+OTHER_TOPIC_BONUS = 0.3  # IELTS topic vocabulary (Environment, Education, ...)
+LEVEL_BONUS = {"A1": -0.7, "A2": -0.25, "B1": 0.0, "B2": 0.1, "C1": 0.0, "C2": -0.3}
+
+
+def usefulness(e):
+    score = e["f"] + TOPIC_BONUS.get(e["t"], OTHER_TOPIC_BONUS) + LEVEL_BONUS[e["c"]]
+    if len(e["w"]) <= 4:
+        score -= 0.4  # short words are rarely hard to spell
+    return score
+
+
+def similar(a, b):
+    """Same word family or near-identical spelling: develop/development, economy/economic."""
+    short, long_ = sorted((a.lower(), b.lower()), key=len)
+    k = max(5, len(short) - 1) if len(short) >= 5 else len(short)
+    return long_.startswith(short[:k])
+
+
+def rank_words(entries):
+    """Set e["r"] (1 = most useful). A word goes after every word it is not similar to,
+    so each Top N list has one word per family instead of several near-duplicates."""
+    rest, ranked = sorted(entries, key=usefulness, reverse=True), []
+    while rest:
+        picked, deferred = [], []
+        for e in rest:
+            (deferred if any(similar(e["w"], p["w"]) for p in picked) else picked).append(e)
+        ranked += picked
+        rest = deferred
+    for i, e in enumerate(ranked, 1):
+        e["r"] = i
+
+
 def cefr_level(word, alts, zipf, levels):
     """Return (level, source): listed level, the level of its base word, or an estimate from frequency."""
     for form in [word] + alts:
@@ -392,8 +440,9 @@ def main():
         syn = pick(o.get("syn", []) + dm_syn[:5] + wn_syn + fd_syn, 2.9, 6)
         ant = pick(o.get("ant", []) + wn_ant + dm_ant + fd_ant, 2.6, 4)
 
-        freq = max([zipf_frequency(base.replace("-", " "), "en")] +
-                   [zipf_frequency(a, "en") for a in alts])
+        freq = max([phrase_zipf(base)] + [phrase_zipf(a) for a in alts])
+        if "f" in o:  # e.g. "found" (to establish) is counted as the past tense of "find"
+            freq = o["f"]
         out.append({
             "w": w,
             "t": topic,
@@ -425,6 +474,7 @@ def main():
     out = [e for e in out if e["w"] not in too_easy]
     for e in out:
         del e["_src"]
+    rank_words(out)
     print(f"Dropped {len(too_easy)} basic A1 words: {' '.join(too_easy)}")
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
@@ -435,6 +485,7 @@ def main():
         fh.write(";\n")
     print(f"Wrote {len(out)} words to {OUT}")
     print(f"No dictionary data for {len(missing)}: {missing}")
+    print("Top 100:", " ".join(e["w"] for e in sorted(out, key=lambda e: e["r"])[:100]))
     print("CEFR:", {c: sum(1 for e in out if e["c"] == c) for c in CEFR_ORDER}, "| source:", sources)
     print("with antonyms:", sum(1 for e in out if e["ant"]))
     print("no synonyms:", sum(1 for e in out if not e["syn"]), "| no example:", sum(1 for e in out if not e["m"][0]["ex"]), "| no ipa:", sum(1 for e in out if not e["ipa"]))

@@ -21,6 +21,13 @@
   <main class="main">
     <section class="toolbar" aria-label="Choose words">
       <div class="filters">
+        <select id="top" aria-label="Word list">
+          <option value="100">Top 100</option>
+          <option value="500">Top 500</option>
+          <option value="1000">Top 1,000</option>
+          <option value="1500">Top 1,500</option>
+          <option value="all">All words</option>
+        </select>
         <select id="topic" aria-label="Topic"></select>
         <select id="level" aria-label="CEFR level">
           <option value="all">All levels</option>
@@ -32,20 +39,21 @@
           <option value="C2">C2 · Proficient</option>
         </select>
         <select id="status" aria-label="Show">
-          <option value="all">All words</option>
+          <option value="all">Any status</option>
           <option value="new">New words</option>
           <option value="weak">My mistakes</option>
           <option value="notmastered">Not mastered</option>
         </select>
         <select id="order" aria-label="Order">
-          <option value="freq">Frequency</option>
+          <option value="rank">Top first</option>
           <option value="random">Random</option>
           <option value="alpha">A to Z</option>
         </select>
+        <button class="gear" id="settingsBtn" type="button" aria-label="Settings" aria-expanded="false" aria-controls="settings">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5-2.1-1.6ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg>
+          <span class="gear-label">Settings</span>
+        </button>
       </div>
-      <button class="gear" id="settingsBtn" type="button" aria-label="Settings" aria-expanded="false" aria-controls="settings">
-        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5-2.1-1.6ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg>
-      </button>
       <div class="settings" id="settings" hidden>
         <label class="field">
           <span>Words at a time</span>
