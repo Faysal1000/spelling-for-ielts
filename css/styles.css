@@ -53,20 +53,20 @@ button { cursor: pointer; }
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 12px;
-  padding: 14px;
+  gap: 8px;
+  padding: 10px;
   border-radius: var(--radius);
   box-shadow: var(--raised);
 }
-.filters { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.filters { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .gear {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   flex: none;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--bg);
   color: var(--muted);
   box-shadow: var(--raised-sm);
@@ -76,15 +76,15 @@ button { cursor: pointer; }
   flex-basis: 100%;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px 10px;
-  padding-top: 10px;
+  gap: 6px 8px;
+  padding-top: 8px;
   border-top: 1px solid var(--shade);
 }
 .settings .field { gap: 2px; }
-.settings .field > span { font-size: 12px; }
-.settings select { height: 38px; border-radius: 10px; }
-.settings-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0 -8px -6px; }
-.settings-actions .link { min-height: 40px; padding: 8px; }
+.settings .field > span { font-size: 12px; padding-left: 2px; }
+.settings select { height: 34px; }
+.settings-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: center; gap: 0 12px; margin-bottom: -6px; }
+.settings-actions .link { min-height: 36px; padding: 6px 8px; }
 .field { display: grid; gap: 4px; min-width: 0; }
 .field > span { font-size: 13px; font-weight: 700; color: var(--muted); padding-left: 4px; }
 select {
@@ -92,8 +92,8 @@ select {
   appearance: none;
   -webkit-appearance: none;
   border: 0;
-  border-radius: 12px;
-  height: 44px;
+  border-radius: 10px;
+  height: 38px;
   padding: 0 28px 0 12px;
   background-color: var(--bg);
   box-shadow: var(--inset);
@@ -232,8 +232,8 @@ select {
   .header { padding-top: 22px; }
   .title { font-size: 1.5rem; }
   .main { padding: 12px max(16px, env(safe-area-inset-right)) 32px max(16px, env(safe-area-inset-left)); }
-  .toolbar, .filters, .settings { gap: 10px; }
-  .toolbar { padding: 12px; }
+  .toolbar, .filters { gap: 8px; }
+  .toolbar { padding: 10px; }
   .rows { gap: 16px; }
   .row { grid-template-columns: minmax(0, 1fr); gap: 0; border-radius: var(--radius); box-shadow: var(--raised); }
   .row .card { box-shadow: none; padding: 14px; }
