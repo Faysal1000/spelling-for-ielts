@@ -133,7 +133,7 @@
     return list.sort((a, b) => a.r - b.r); // "Top first": most useful words first
   }
 
-  // Seeded shuffle: the random order only changes when asked to (so "Show more" continues the same set)
+  // Seeded shuffle: the random order only changes when asked to (so moving between pages keeps the same set)
   const newSeed = () => Math.floor(Math.random() * 1e9);
   let shuffleSeed = newSeed();
   function shuffleStable(list) {
@@ -148,7 +148,8 @@
 
   /* ---------- Visible list state ---------- */
   let list = [];           // all words matching the filters, in order
-  let shown = 0;           // how many rows are on the page
+  let page = 0;            // current page (0-based)
+  let start = 0, end = 0;  // list indexes of the rows on this page (end is exclusive)
   let active = 0;          // index of the active row
   let results = new Map(); // word index -> { done, mistakes, typed } once a word is finished
   const newLive = (n = -1) => ({ n, valid: "", mistakes: 0 });
@@ -163,32 +164,71 @@
     savePrefs();
     list = filteredWords();
     results = new Map();
-    active = 0;
-    shown = 0;
+    showPage(0);
+    renderStats();
+  }
+
+  const pageCount = () => Math.max(1, Math.ceil(list.length / batchSize()));
+
+  // Renders one page of rows. The active row is the first word on it not yet answered.
+  function showPage(p) {
+    page = Math.min(Math.max(0, p), pageCount() - 1);
+    start = page * batchSize();
+    end = Math.min(list.length, start + batchSize());
     clearWrong(false);
     live = newLive();
     clearTimeout(autoNextTimer);
     stopSpeech();
     $("#rows").innerHTML = list.length
-      ? ""
+      ? list.slice(start, end).map((w, k) => rowHtml(w, start + k)).join("")
       : '<p class="empty">No words match these filters. Try another topic or “All words”.</p>';
-    showMore();
-    renderStats();
-  }
-
-  function showMore() {
-    const from = shown;
-    shown = Math.min(list.length, shown + batchSize());
-    $("#rows").insertAdjacentHTML("beforeend", list.slice(from, shown).map((w, k) => rowHtml(w, from + k)).join(""));
+    active = start;
+    while (active < end - 1 && results.has(list[active].i)) active += 1;
     updateFooter();
     markActive();
   }
 
+  // Page change from the pager: show the page and bring its first row into view
+  function goToPage(p, { focusRow = -1 } = {}) {
+    showPage(p);
+    if (focusRow >= 0) setActive(focusRow);
+    else window.scrollTo({ top: $("#listInfo").offsetTop - 16, behavior: reduceMotion.matches ? "auto" : "smooth" });
+  }
+
+  // Page numbers to show: first, last and the two either side of the current one, with gaps as "…"
+  function pageNumbers(total) {
+    const keep = new Set([0, total - 1, page - 1, page, page + 1].filter(n => n >= 0 && n < total));
+    const nums = [...keep].sort((a, b) => a - b), out = [];
+    nums.forEach((n, k) => {
+      if (k && n - nums[k - 1] === 2) out.push(n - 1);
+      else if (k && n - nums[k - 1] > 2) out.push("…");
+      out.push(n);
+    });
+    return out;
+  }
+
+  function pagerHtml() {
+    const total = pageCount();
+    if (total <= 1) return "";
+    const btn = (n, label, aria, extra = "") =>
+      `<button class="page-btn${extra}" type="button" data-page="${n}" aria-label="${aria}"${n === page ? ' aria-current="page"' : ""}>${label}</button>`;
+    const nums = pageNumbers(total).map(n => n === "…"
+      ? '<span class="page-gap" aria-hidden="true">…</span>'
+      : btn(n, n + 1, `Page ${n + 1}`, " page-num")).join("");
+    const options = Array.from({ length: total }, (_, n) =>
+      `<option value="${n}"${n === page ? " selected" : ""}>${n + 1}</option>`).join("");
+    return `<button class="page-btn page-step" type="button" data-page="${page - 1}" aria-label="Previous page"${page === 0 ? " disabled" : ""}>‹ Prev</button>
+      <span class="page-nums">${nums}</span>
+      <button class="page-btn page-step" type="button" data-page="${page + 1}" aria-label="Next page"${page === total - 1 ? " disabled" : ""}>Next ›</button>
+      <label class="page-jump"><span>Go to page</span><select data-jump aria-label="Go to page">${options}</select><span>of ${fmt(total)}</span></label>`;
+  }
+
   function updateFooter() {
-    const left = list.length - shown;
-    $("#listInfo").textContent = list.length ? `Showing ${fmt(shown)} of ${fmt(list.length)} words` : "";
-    $("#moreBtn").hidden = left <= 0;
-    $("#moreBtn").textContent = `Show ${fmt(Math.min(left, batchSize()))} more`;
+    $("#listInfo").textContent = list.length
+      ? `Words ${fmt(start + 1)}–${fmt(end)} of ${fmt(list.length)}`
+      : "";
+    const pager = pagerHtml();
+    for (const el of document.querySelectorAll(".pager")) { el.innerHTML = pager; el.hidden = !pager; }
     $("#shuffleBtn").hidden = prefs.order !== "random" || !list.length;
   }
 
@@ -316,6 +356,7 @@
 
   // Phones: put the row near the top so the keyboard can't cover it. Laptops: centre it.
   const narrow = window.matchMedia("(max-width: 640px)");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   function scrollToRow(n) {
     const row = document.querySelector(`[data-row="${n}"]`);
     if (row) row.scrollIntoView({ behavior: "smooth", block: narrow.matches ? "start" : "center" });
@@ -329,7 +370,7 @@
 
   /* ---------- Practice actions ---------- */
   function setActive(n, { play = true, scroll = true } = {}) {
-    if (n < 0 || n >= shown) return;
+    if (n < start || n >= end) return;
     clearTimeout(autoNextTimer);
     clearWrong();
     if (live.n !== n) live = newLive(n);
@@ -419,8 +460,7 @@
     results.set(word.i, { done, mistakes: live.mistakes, typed: live.valid });
     record(word, done && live.mistakes === 0);
     renderStats();
-    if (n >= shown - 1 && shown < list.length) showMore();
-    const next = n + 1 < shown ? n + 1 : n;
+    const next = n + 1 < end ? n + 1 : n;
     if (next !== n) setActive(next, { play: false });
     updateRow(n);
     clearTimeout(autoNextTimer);
@@ -432,11 +472,12 @@
   }
 
   function goNext() {
-    if (active >= shown - 1 && shown < list.length) showMore();
-    if (active < shown - 1) setActive(active + 1);
+    if (active < end - 1) setActive(active + 1);
+    else if (page < pageCount() - 1) goToPage(page + 1, { focusRow: end });
   }
   function goPrev() {
-    if (active > 0) setActive(active - 1);
+    if (active > start) setActive(active - 1);
+    else if (page > 0) goToPage(page - 1, { focusRow: start - 1 });
   }
 
   /* ---------- Events ---------- */
@@ -486,11 +527,15 @@
     }
   });
 
-  $("#moreBtn").addEventListener("click", () => {
-    const next = shown;
-    showMore();
-    setActive(next);
-  });
+  for (const pager of document.querySelectorAll(".pager")) {
+    pager.addEventListener("click", e => {
+      const btn = e.target.closest("[data-page]");
+      if (btn && !btn.disabled) goToPage(Number(btn.dataset.page));
+    });
+    pager.addEventListener("change", e => {
+      if (e.target.matches("[data-jump]")) goToPage(Number(e.target.value));
+    });
+  }
   $("#shuffleBtn").addEventListener("click", () => {
     shuffleSeed = newSeed();
     refresh();
@@ -622,7 +667,6 @@
   /* ---------- Back to top: shown once the page is scrolled down ---------- */
   const TO_TOP_AFTER_PX = 600;
   const toTop = $("#toTop");
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const updateToTop = () => { toTop.hidden = window.scrollY < TO_TOP_AFTER_PX; };
   window.addEventListener("scroll", updateToTop, { passive: true });
   toTop.addEventListener("click", () => {

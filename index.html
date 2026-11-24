@@ -54,7 +54,7 @@
       </div>
       <div class="settings" id="settings" hidden>
         <label class="field">
-          <span>Words at a time</span>
+          <span>Words per page</span>
           <select id="count">
             <option value="20">20</option>
             <option value="30">30</option>
@@ -105,11 +105,12 @@
     </section>
 
     <p class="list-info" id="listInfo"></p>
+    <nav class="pager" aria-label="Pages, top" hidden></nav>
 
     <section class="rows" id="rows"></section>
 
+    <nav class="pager pager-bottom" aria-label="Pages, bottom" hidden></nav>
     <div class="more">
-      <button class="btn" id="moreBtn" type="button">Show more</button>
       <button class="btn" id="shuffleBtn" type="button">New random set</button>
     </div>
   </main>

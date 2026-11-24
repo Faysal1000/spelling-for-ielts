@@ -204,8 +204,31 @@ select {
 .row.bad .answer-card { border-color: color-mix(in srgb, var(--bad) 55%, transparent); }
 .row.warn .answer-card { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
 
-/* ---------- Show more & footer ---------- */
+/* ---------- Pages & footer ---------- */
+.pager { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 10px 8px; margin: 0 0 18px; }
+.pager[hidden] { display: none; }
+.pager-bottom { margin: 24px 0 0; }
+.page-nums { display: flex; align-items: center; gap: 6px; }
+.page-btn {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--raised-sm);
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+}
+.page-btn:active, .page-btn[aria-current="page"] { box-shadow: var(--inset); }
+.page-btn[aria-current="page"] { color: var(--text); }
+.page-btn:disabled { color: var(--faint); box-shadow: none; cursor: default; }
+.page-gap { color: var(--faint); font-weight: 700; padding: 0 2px; }
+.page-jump { display: flex; align-items: center; gap: 6px; margin-left: 8px; color: var(--muted); font-weight: 600; font-size: 15px; }
+.page-jump select { width: auto; min-width: 68px; }
 .more { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin-top: 24px; }
+.more:not(:has(:not([hidden]))) { display: none; }
 .btn {
   border: 0;
   padding: 11px 20px;
@@ -305,6 +328,8 @@ select {
   .row .answer-card { border-radius: 0 0 var(--radius) var(--radius); border-top: 0; padding-top: 2px; }
   .esc { display: none; }
   .btn { padding: 10px 14px; }
+  .page-nums { display: none; } /* phones: Prev, Next and the page menu */
+  .page-jump { margin-left: 0; }
   .notice { flex-direction: column; align-items: stretch; text-align: center; }
   .notice-actions { justify-content: center; }
 }

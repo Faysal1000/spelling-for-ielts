@@ -6,7 +6,7 @@ No backend, no database, no accounts, no cookies, no analytics: word data is a s
 
 ## Features
 
-- The ⚙ Settings button holds words at a time (20, 30, 50 or 100), mistakes allowed, how long a wrong letter stays visible, voice, speed, PDF export and the reset buttons; **Show more** adds the next batch, and **New random set** reshuffles in Random order. Each row has a clue card (British IPA, part of speech, up to 3 synonyms and 2 antonyms, one learner-friendly meaning with an example) and a typing card
+- The ⚙ Settings button holds words per page (20, 30, 50 or 100), mistakes allowed, how long a wrong letter stays visible, voice, speed, PDF export and the reset buttons; the list is split into pages with Prev/Next, page numbers and a **Go to page** menu above and below the list (on the last word of a page, Enter or → moves to the next page), and **New random set** reshuffles in Random order. Each row has a clue card (British IPA, part of speech, up to 3 synonyms and 2 antonyms, one learner-friendly meaning with an example) and a typing card
 - Text-to-speech pronunciation with a British voice where available. Voice and speed can be changed
 - Live letter checking: a wrong letter shows in red for a moment (0.3–2 s, or not at all), is then removed, and counts as a mistake. After the allowed number of mistakes (1–10 or unlimited, default 5) the word is shown and the next one starts. A finished word moves straight on to the next one, which scrolls into view (on phones the keyboard stays open). Only the word itself is ever spoken
 - The word is blanked out of its definition, example, synonyms and antonyms until you answer (including inside longer words, such as un___ for unhappy)
@@ -60,7 +60,7 @@ index.html              page markup: filters, word rows, footer, privacy notice
 privacy.html            privacy page
 404.html                page shown for unknown URLs
 css/styles.css          neumorphic light theme (system fonts)
-js/app.js               app logic: filters, show more, speech, live checking, progress, PDF export
+js/app.js               app logic: filters, pages, speech, live checking, progress, PDF export
 data/words.js           generated word data (window.IELTS_WORDS), committed
 favicon.svg
 vercel.json             Vercel headers (clean URLs, cache revalidation, security headers)
