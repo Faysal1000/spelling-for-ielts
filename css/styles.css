@@ -10,6 +10,7 @@
   --ok-soft: #dcefe5;
   --bad: #c9413a;
   --bad-soft: #f5e0df;
+  --warn: #a86a12;
   --light: #ffffff;
   --shade: #c3cad6;
   --raised: 7px 7px 14px var(--shade), -7px -7px 14px var(--light);
@@ -150,6 +151,7 @@ select {
 .mark { margin-left: auto; flex: none; width: 10px; height: 10px; border-radius: 50%; background: transparent; }
 .mark.mastered { background: var(--ok); }
 .mark.weak { background: var(--bad); }
+.mark.weak.almost { background: var(--warn); }
 .cefr { padding: 2px 9px; border-radius: 9px; font-size: 13px; font-weight: 800; box-shadow: var(--raised-sm); }
 .cefr-A { color: var(--ok); }
 .cefr-B { color: var(--accent); }
@@ -194,13 +196,13 @@ select {
 .result .verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 15px; }
 .result.ok .verdict { color: var(--ok); }
 .result.bad .verdict { color: var(--bad); }
-.result.warn .verdict { color: #a86a12; }
+.result.warn .verdict { color: var(--warn); }
 .word .good { color: var(--ok); }
 .word .miss { color: var(--bad); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
 .result .word { font-size: 22px; font-weight: 800; letter-spacing: 0.02em; }
 .row.ok .answer-card { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
 .row.bad .answer-card { border-color: color-mix(in srgb, var(--bad) 55%, transparent); }
-.row.warn .answer-card { border-color: color-mix(in srgb, #a86a12 55%, transparent); }
+.row.warn .answer-card { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
 
 /* ---------- Show more & footer ---------- */
 .more { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin-top: 24px; }
@@ -262,6 +264,27 @@ select {
 .back { font-weight: 700; text-decoration: none; }
 .back:hover { text-decoration: underline; }
 .back-bottom { margin-top: 32px; }
+
+/* ---------- Back to top ---------- */
+.to-top {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 20;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--accent);
+  box-shadow: var(--raised);
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.to-top:active { box-shadow: var(--inset); }
+.to-top[hidden], .notice:not([hidden]) ~ .to-top { display: none; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {

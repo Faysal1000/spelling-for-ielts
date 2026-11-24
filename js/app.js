@@ -271,8 +271,11 @@
   function markHtml(word) {
     const st = statusOf(word);
     if (st !== "mastered" && st !== "weak") return '<span class="mark" aria-hidden="true"></span>';
-    const label = st === "mastered" ? "Mastered" : "In your mistakes";
-    return `<span class="mark ${st}" role="img" aria-label="${label}" title="${label}"></span>`;
+    // A weak word already answered correctly since its last mistake is close to being cleared
+    const almost = st === "weak" && progress[word.key].s > 0;
+    const label = st === "mastered" ? "Mastered"
+      : almost ? "One more correct answer to clear it from your mistakes" : "In your mistakes";
+    return `<span class="mark ${st}${almost ? " almost" : ""}" role="img" aria-label="${label}" title="${label}"></span>`;
   }
 
   function rowHtml(word, n) {
@@ -615,6 +618,17 @@
     saveProgress();
     refresh();
   });
+
+  /* ---------- Back to top: shown once the page is scrolled down ---------- */
+  const TO_TOP_AFTER_PX = 600;
+  const toTop = $("#toTop");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const updateToTop = () => { toTop.hidden = window.scrollY < TO_TOP_AFTER_PX; };
+  window.addEventListener("scroll", updateToTop, { passive: true });
+  toTop.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: reduceMotion.matches ? "auto" : "smooth" });
+  });
+  updateToTop();
 
   /* ---------- Privacy notice (shown once; nothing to consent to, since nothing is collected) ---------- */
   const KEY_NOTICE = "isp.notice.v1";
